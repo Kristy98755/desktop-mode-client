@@ -43,31 +43,97 @@ for /f "usebackq tokens=1,* delims==" %%a in ("%PC_DATA%") do (
 )
 echo.
 
+rem === DEVICE DETECTION ===
+set "DEV_COUNT=0"
+set "S="
+
+for /f "skip=1 tokens=1,2" %%a in ('adb devices 2^>nul') do (
+    if "%%b"=="device" (
+        set /a "DEV_COUNT+=1"
+        set "DEV_!DEV_COUNT!=%%a"
+        for /f "delims=" %%m in ('adb -s %%a shell getprop ro.product.model 2^>nul') do set "DEV_M!DEV_COUNT!=%%m"
+    )
+)
+
+if "!DEV_COUNT!"=="0" (
+    echo %C4%  No Android devices found.%C0%
+    echo %CD%  Connect a device with USB debugging enabled.%C0%
+    pause
+    goto :eof
+)
+
+if "!DEV_COUNT!"=="1" (
+    set "S=!DEV_1!"
+    set "PICK=1"
+    goto :device_ok
+)
+
+rem === MULTI-DEVICE SELECTION ===
+echo %C3%  Multiple devices found:%C0%
+echo %CD%  ------------------------------------------------------------------------%C0%
+set "DI=0"
+:dev_list_loop
+set /a "DI+=1"
+if !DI! leq !DEV_COUNT! (
+    echo %CD%    [!DI!] !DEV_M%DI%!  (!DEV_%DI%!^)
+    goto :dev_list_loop
+)
+echo.
+
+:dev_pick
+set /p "PICK=  Select device [1-!DEV_COUNT!]: "
+if not defined PICK goto :dev_pick
+if !PICK! lss 1 goto :dev_pick
+if !PICK! gtr !DEV_COUNT! goto :dev_pick
+
+set "S=!DEV_%PICK%!"
+
+rem Flash screen to confirm
+echo.
+echo %CD%    Flashing screen of !DEV_M%PICK%! ...%C0%
+adb -s !S! shell input keyevent KEYCODE_WAKEUP >nul 2>&1
+adb -s !S! shell settings put system screen_brightness 255 >nul 2>&1
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 125" 2>nul
+adb -s !S! shell settings put system screen_brightness 0 >nul 2>&1
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 125" 2>nul
+adb -s !S! shell settings put system screen_brightness 255 >nul 2>&1
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 125" 2>nul
+adb -s !S! shell settings put system screen_brightness 0 >nul 2>&1
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 125" 2>nul
+adb -s !S! shell settings put system screen_brightness 255 >nul 2>&1
+echo.
+
+set /p "CONFIRM=  Was that the right device? (Y/n): "
+if /i "!CONFIRM!"=="n" goto :dev_pick
+
+:device_ok
+echo %C2%  Using: !DEV_M%PICK%!  (!S!)%C0%
+echo.
+
 rem === ANDROID INFO ===
 echo %C3%  Android Device:%C0%
 echo %CD%  ------------------------------------------------------------------------%C0%
 
 set "AND_DATA=%TEMP%\adw_and.txt"
-set "A=adb"
 
-for /f "delims=" %%a in ('!A! shell getprop ro.product.model 2^>nul') do echo ANDROID_MODEL=%%a> "!AND_DATA!"
-for /f "delims=" %%a in ('!A! shell getprop ro.product.brand 2^>nul') do echo ANDROID_BRAND=%%a>> "!AND_DATA!"
-for /f "delims=" %%a in ('!A! shell getprop ro.product.device 2^>nul') do echo ANDROID_DEVICE=%%a>> "!AND_DATA!"
-for /f "delims=" %%a in ('!A! shell getprop ro.build.version.release 2^>nul') do echo ANDROID_VER=%%a>> "!AND_DATA!"
-for /f "delims=" %%a in ('!A! shell getprop ro.build.version.sdk 2^>nul') do echo ANDROID_SDK=%%a>> "!AND_DATA!"
-for /f "delims=" %%a in ('!A! shell getprop ro.product.cpu.abi 2^>nul') do echo ANDROID_ABI=%%a>> "!AND_DATA!"
-for /f "delims=" %%a in ('!A! shell "cat /proc/cpuinfo | grep ^processor | wc -l" 2^>nul') do echo ANDROID_CORES=%%a>> "!AND_DATA!"
-for /f "delims=" %%a in ('!A! shell wm size 2^>nul') do (
+for /f "delims=" %%a in ('adb -s !S! shell getprop ro.product.model 2^>nul') do echo ANDROID_MODEL=%%a> "!AND_DATA!"
+for /f "delims=" %%a in ('adb -s !S! shell getprop ro.product.brand 2^>nul') do echo ANDROID_BRAND=%%a>> "!AND_DATA!"
+for /f "delims=" %%a in ('adb -s !S! shell getprop ro.product.device 2^>nul') do echo ANDROID_DEVICE=%%a>> "!AND_DATA!"
+for /f "delims=" %%a in ('adb -s !S! shell getprop ro.build.version.release 2^>nul') do echo ANDROID_VER=%%a>> "!AND_DATA!"
+for /f "delims=" %%a in ('adb -s !S! shell getprop ro.build.version.sdk 2^>nul') do echo ANDROID_SDK=%%a>> "!AND_DATA!"
+for /f "delims=" %%a in ('adb -s !S! shell getprop ro.product.cpu.abi 2^>nul') do echo ANDROID_ABI=%%a>> "!AND_DATA!"
+for /f "delims=" %%a in ('adb -s !S! shell "cat /proc/cpuinfo | grep ^processor | wc -l" 2^>nul') do echo ANDROID_CORES=%%a>> "!AND_DATA!"
+for /f "delims=" %%a in ('adb -s !S! shell wm size 2^>nul') do (
     echo %%a | findstr /c:"Physical size" >nul && (
         for /f "tokens=3" %%b in ("%%a") do echo ANDROID_DISP=%%b>> "!AND_DATA!"
     )
 )
-for /f "delims=" %%a in ('!A! shell wm density 2^>nul') do (
+for /f "delims=" %%a in ('adb -s !S! shell wm density 2^>nul') do (
     echo %%a | findstr /c:"Physical density" >nul && (
         for /f "tokens=3" %%b in ("%%a") do echo ANDROID_DPI=%%b>> "!AND_DATA!"
     )
 )
-for /f "delims=" %%a in ('!A! shell "cat /proc/meminfo | head -1" 2^>nul') do (
+for /f "delims=" %%a in ('adb -s !S! shell "cat /proc/meminfo | head -1" 2^>nul') do (
     for /f "tokens=2" %%b in ("%%a") do (
         set /a "MB=%%b / 1024"
         echo ANDROID_RAM=!MB!MB>> "!AND_DATA!"
@@ -75,17 +141,17 @@ for /f "delims=" %%a in ('!A! shell "cat /proc/meminfo | head -1" 2^>nul') do (
 )
 
 rem Battery
-for /f "delims=" %%a in ('!A! shell "dumpsys battery 2>/dev/null | grep ""  level:"" 2>/dev/null"') do (
+for /f "delims=" %%a in ('adb -s !S! shell "dumpsys battery 2>/dev/null | grep ""  level:"" 2>/dev/null"') do (
     for /f "tokens=2 delims=:" %%b in ("%%a") do set "LVL=%%b"
 )
-for /f "delims=" %%a in ('!A! shell "dumpsys battery 2>/dev/null | grep scale"') do (
+for /f "delims=" %%a in ('adb -s !S! shell "dumpsys battery 2>/dev/null | grep scale"') do (
     for /f "tokens=2 delims=:" %%b in ("%%a") do set "SC=%%b"
 )
 if defined LVL if defined SC (
     set /a "BATT=!LVL! / !SC!"
     echo ANDROID_BATT=!BATT!%%>> "!AND_DATA!"
 )
-for /f "delims=" %%a in ('!A! shell "dumpsys battery 2>/dev/null | grep temperature"') do (
+for /f "delims=" %%a in ('adb -s !S! shell "dumpsys battery 2>/dev/null | grep temperature"') do (
     for /f "tokens=2 delims=:" %%b in ("%%a") do (
         set "T=%%b"
         set "T=!T: =!"
@@ -95,14 +161,14 @@ for /f "delims=" %%a in ('!A! shell "dumpsys battery 2>/dev/null | grep temperat
 )
 
 rem Desktop mode - read, then auto-enable if off
-for /f "delims=" %%a in ('!A! shell settings get global enable_freeform_support 2^>nul') do set "DM_FF=%%a"
-for /f "delims=" %%a in ('!A! shell settings get global force_desktop_mode_on_external_displays 2^>nul') do set "DM_DE=%%a"
+for /f "delims=" %%a in ('adb -s !S! shell settings get global enable_freeform_support 2^>nul') do set "DM_FF=%%a"
+for /f "delims=" %%a in ('adb -s !S! shell settings get global force_desktop_mode_on_external_displays 2^>nul') do set "DM_DE=%%a"
 set "DM_ENABLED=0"
 if "!DM_FF!"=="1" if "!DM_DE!"=="1" set "DM_ENABLED=1"
 if "!DM_ENABLED!"=="0" (
-    !A! shell settings put global enable_freeform_support 1 >nul 2>&1
-    !A! shell settings put global force_desktop_mode_on_external_displays 1 >nul 2>&1
-    !A! shell settings put global force_allow_on_external 1 >nul 2>&1
+    adb -s !S! shell settings put global enable_freeform_support 1 >nul 2>&1
+    adb -s !S! shell settings put global force_desktop_mode_on_external_displays 1 >nul 2>&1
+    adb -s !S! shell settings put global force_allow_on_external 1 >nul 2>&1
     echo ANDROID_DM=WAS_OFF^,NOW_ON>> "!AND_DATA!"
 ) else (
     echo ANDROID_DM=ON>> "!AND_DATA!"
@@ -205,7 +271,7 @@ if "!SEL!"=="2" (set "RES=1920x1080" & set "DPI=240")
 if "!SEL!"=="3" (set "RES=2560x1440" & set "DPI=240")
 if "!SEL!"=="4" (set "RES=1280x720" & set "DPI=160")
 
-set "CMD=scrcpy --new-display=!RES!/!DPI! --video-codec=h264 --max-fps=60 --video-bit-rate=8M --no-audio"
+set "CMD=scrcpy -s !S! --new-display=!RES!/!DPI! --video-codec=h264 --max-fps=60 --video-bit-rate=8M --no-audio"
 
 set /p "AUDIO=  Audio? (y/N): "
 if /i "!AUDIO!"=="y" set "CMD=!CMD:--no-audio=!"
