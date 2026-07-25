@@ -276,6 +276,19 @@ set "CMD=scrcpy -s !S! --new-display=!RES!/!DPI! --video-codec=h264 --max-fps=60
 set /p "AUDIO=  Audio? (y/N): "
 if /i "!AUDIO!"=="y" set "CMD=!CMD:--no-audio=!"
 
+set /p "FREEFORM=  Multi-window? (y/N): "
+if /i "!FREEFORM!"=="y" (
+    adb -s !S! shell settings put global enable_freeform_support 1 >nul 2>&1
+    adb -s !S! shell settings put global development_enable_freeform_windows_support 1 >nul 2>&1
+    adb -s !S! shell settings put global force_allow_on_external 1 >nul 2>&1
+    echo %CD%    Freeform: enabled%C0%
+) else (
+    adb -s !S! shell settings put global enable_freeform_support 0 >nul 2>&1
+    adb -s !S! shell settings put global development_enable_freeform_windows_support 0 >nul 2>&1
+    adb -s !S! shell settings put global force_allow_on_external 0 >nul 2>&1
+    echo %CD%    Freeform: disabled%C0%
+)
+
 echo.
 echo %C3%  Command:%C0% !CMD!
 echo.
